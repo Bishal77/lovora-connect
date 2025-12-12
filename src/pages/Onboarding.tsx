@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { AuthProvider, useAuth } from '@/hooks/useAuth';
+import { useAuth } from '@/hooks/useAuth';
 import { useProfile } from '@/hooks/useProfile';
 import { OnboardingBasicInfo } from '@/components/onboarding/OnboardingBasicInfo';
 import { OnboardingPhotos } from '@/components/onboarding/OnboardingPhotos';
@@ -9,6 +9,9 @@ import { OnboardingBio } from '@/components/onboarding/OnboardingBio';
 import { Progress } from '@/components/ui/progress';
 import { toast } from 'sonner';
 
+type GenderType = 'male' | 'female' | 'other' | 'prefer_not_to_say';
+type RelationshipGoal = 'casual' | 'serious' | 'marriage' | 'friendship';
+
 function OnboardingContent() {
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -16,19 +19,28 @@ function OnboardingContent() {
   const [step, setStep] = useState(1);
   const totalSteps = 4;
 
-  const [basicInfo, setBasicInfo] = useState({
+  const [basicInfo, setBasicInfo] = useState<{
+    full_name: string;
+    date_of_birth: string;
+    gender: GenderType;
+  }>({
     full_name: '',
     date_of_birth: '',
-    gender: 'prefer_not_to_say' as const
+    gender: 'prefer_not_to_say'
   });
 
   const [photos, setPhotos] = useState<string[]>([]);
   const [selectedInterests, setSelectedInterests] = useState<string[]>([]);
-  const [bioData, setBioData] = useState({
+  const [bioData, setBioData] = useState<{
+    bio: string;
+    city: string;
+    occupation: string;
+    relationship_goal: RelationshipGoal;
+  }>({
     bio: '',
     city: '',
     occupation: '',
-    relationship_goal: 'casual' as const
+    relationship_goal: 'casual'
   });
 
   useEffect(() => {
@@ -36,7 +48,7 @@ function OnboardingContent() {
       setBasicInfo({
         full_name: profile.full_name || '',
         date_of_birth: profile.date_of_birth || '',
-        gender: profile.gender || 'prefer_not_to_say'
+        gender: (profile.gender as GenderType) || 'prefer_not_to_say'
       });
     }
   }, [profile]);
