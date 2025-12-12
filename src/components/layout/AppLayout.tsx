@@ -1,6 +1,7 @@
 import React from "react";
 import { BottomNav } from "@/components/ui/bottom-nav";
 import { cn } from "@/lib/utils";
+import { usePresence } from "@/hooks/usePresence";
 
 interface AppLayoutProps {
   children: React.ReactNode;
@@ -15,6 +16,9 @@ export const AppLayout: React.FC<AppLayoutProps> = ({
   className,
   badges,
 }) => {
+  // Initialize presence tracking
+  usePresence();
+
   return (
     <div className="min-h-screen bg-background">
       <main

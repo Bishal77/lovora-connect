@@ -1,7 +1,7 @@
 import * as React from "react";
 import { cn } from "@/lib/utils";
 import { Link, useLocation } from "react-router-dom";
-import { Flame, Search, Heart, MessageCircle, User } from "lucide-react";
+import { Flame, Search, Heart, MessageCircle, User, Zap } from "lucide-react";
 
 interface NavItem {
   icon: React.ElementType;
@@ -12,8 +12,8 @@ interface NavItem {
 
 const navItems: NavItem[] = [
   { icon: Flame, label: "Home", path: "/home" },
+  { icon: Zap, label: "Live", path: "/live" },
   { icon: Search, label: "Discover", path: "/discover" },
-  { icon: Heart, label: "Matches", path: "/matches" },
   { icon: MessageCircle, label: "Chat", path: "/chat" },
   { icon: User, label: "Profile", path: "/profile" },
 ];
