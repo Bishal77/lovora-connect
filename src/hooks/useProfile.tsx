@@ -134,6 +134,45 @@ export function useProfile() {
     return { error };
   };
 
+  const uploadPhoto = async (file: File, isPrimary = false) => {
+    if (!user) return { error: new Error('Not authenticated'), url: null };
+
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${user.id}/${Date.now()}.${fileExt}`;
+
+    const { error: uploadError } = await supabase.storage
+      .from('profile-photos')
+      .upload(fileName, file);
+
+    if (uploadError) {
+      console.error('Upload error:', uploadError);
+      return { error: uploadError, url: null };
+    }
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('profile-photos')
+      .getPublicUrl(fileName);
+
+    // Add to user_photos table
+    const orderIndex = photos.length;
+    const { data, error } = await supabase
+      .from('user_photos')
+      .insert({
+        user_id: user.id,
+        photo_url: publicUrl,
+        is_primary: isPrimary || photos.length === 0,
+        order_index: orderIndex
+      })
+      .select()
+      .single();
+
+    if (!error && data) {
+      setPhotos(prev => [...prev, data as UserPhoto]);
+    }
+
+    return { data, error, url: publicUrl };
+  };
+
   const addPhoto = async (photoUrl: string, isPrimary = false) => {
     if (!user) return { error: new Error('Not authenticated') };
 
@@ -199,6 +238,7 @@ export function useProfile() {
     userInterests,
     loading,
     updateProfile,
+    uploadPhoto,
     addPhoto,
     removePhoto,
     toggleInterest,

@@ -1,7 +1,9 @@
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Button } from '@/components/ui/button';
-import { ChevronRight, Camera, X, Plus } from 'lucide-react';
+import { ChevronRight, Camera, X, Plus, Loader2 } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import { useProfile } from '@/hooks/useProfile';
+import { toast } from 'sonner';
 
 interface Props {
   photos: string[];
@@ -12,23 +14,56 @@ interface Props {
 
 export function OnboardingPhotos({ photos, onUpdate, onNext, onBack }: Props) {
   const [error, setError] = useState('');
+  const [uploading, setUploading] = useState(false);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { uploadPhoto } = useProfile();
+
+  const handleFileSelect = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const file = files[0];
+    
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('Please select an image file');
+      return;
+    }
+
+    // Validate file size (max 5MB)
+    if (file.size > 5 * 1024 * 1024) {
+      toast.error('Image must be less than 5MB');
+      return;
+    }
+
+    setUploading(true);
+    try {
+      const { url, error } = await uploadPhoto(file, photos.length === 0);
+      
+      if (error) {
+        toast.error('Failed to upload photo');
+        console.error(error);
+      } else if (url) {
+        onUpdate([...photos, url]);
+        toast.success('Photo uploaded!');
+      }
+    } catch (err) {
+      toast.error('Failed to upload photo');
+      console.error(err);
+    } finally {
+      setUploading(false);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
 
   const handleAddPhoto = () => {
-    // In a real app, this would open a file picker and upload to storage
-    // For demo, we'll use placeholder images
-    const placeholders = [
-      'https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=400&fit=crop',
-      'https://images.unsplash.com/photo-1507003211169-0a1dd7228f2d?w=400&h=400&fit=crop',
-      'https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=400&fit=crop',
-      'https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=400&fit=crop',
-      'https://images.unsplash.com/photo-1539571696357-5a69c17a67c6?w=400&h=400&fit=crop',
-      'https://images.unsplash.com/photo-1534528741775-53994a69daeb?w=400&h=400&fit=crop'
-    ];
-    
-    const unusedPhotos = placeholders.filter(p => !photos.includes(p));
-    if (unusedPhotos.length > 0 && photos.length < 6) {
-      onUpdate([...photos, unusedPhotos[0]]);
+    if (photos.length >= 6) {
+      toast.error('Maximum 6 photos allowed');
+      return;
     }
+    fileInputRef.current?.click();
   };
 
   const handleRemovePhoto = (index: number) => {
@@ -51,6 +86,14 @@ export function OnboardingPhotos({ photos, onUpdate, onNext, onBack }: Props) {
         <h2 className="text-2xl font-bold text-foreground">Add your photos</h2>
         <p className="text-muted-foreground">Add at least 1 photo to continue</p>
       </div>
+
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="image/*"
+        onChange={handleFileSelect}
+        className="hidden"
+      />
 
       <div className="grid grid-cols-3 gap-3">
         {[0, 1, 2, 3, 4, 5].map((index) => (
@@ -83,9 +126,12 @@ export function OnboardingPhotos({ photos, onUpdate, onNext, onBack }: Props) {
             ) : (
               <button
                 onClick={handleAddPhoto}
-                className="w-full h-full flex flex-col items-center justify-center text-muted-foreground hover:text-foreground transition-colors"
+                disabled={uploading}
+                className="w-full h-full flex flex-col items-center justify-center text-muted-foreground hover:text-foreground transition-colors disabled:opacity-50"
               >
-                {index === 0 ? (
+                {uploading && index === photos.length ? (
+                  <Loader2 className="h-8 w-8 animate-spin" />
+                ) : index === 0 ? (
                   <Camera className="h-8 w-8 mb-1" />
                 ) : (
                   <Plus className="h-6 w-6" />
@@ -108,9 +154,18 @@ export function OnboardingPhotos({ photos, onUpdate, onNext, onBack }: Props) {
         <Button variant="outline" onClick={onBack} className="flex-1">
           Back
         </Button>
-        <Button onClick={handleNext} className="flex-1">
-          Continue
-          <ChevronRight className="ml-2 h-4 w-4" />
+        <Button onClick={handleNext} className="flex-1" disabled={uploading}>
+          {uploading ? (
+            <>
+              <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+              Uploading...
+            </>
+          ) : (
+            <>
+              Continue
+              <ChevronRight className="ml-2 h-4 w-4" />
+            </>
+          )}
         </Button>
       </div>
     </div>
