@@ -1,75 +1,33 @@
 import React, { useState, useEffect } from "react";
 import { useNavigate } from "react-router-dom";
+import { AnimatePresence, motion } from "framer-motion";
 import { AppLayout } from "@/components/layout/AppLayout";
-import { ProfileCard } from "@/components/ui/profile-card";
-import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { SwipeCard } from "@/components/swipe/SwipeCard";
+import { SwipeActions } from "@/components/swipe/SwipeActions";
+import { MatchPopup } from "@/components/swipe/MatchPopup";
+import { useMatching } from "@/hooks/useMatching";
 import {
   Heart,
-  X,
-  Star,
-  RotateCcw,
   SlidersHorizontal,
   Flame,
   Video,
   Users,
+  Loader2,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
-
-// Demo profiles for swipe mode
-const demoProfiles = [
-  {
-    id: "1",
-    name: "Sarah",
-    age: 25,
-    photos: [
-      "https://images.unsplash.com/photo-1494790108377-be9c29b29330?w=400&h=600&fit=crop",
-    ],
-    location: "New York, NY",
-    occupation: "Designer",
-    bio: "Coffee lover ☕ | Art enthusiast 🎨 | Looking for someone to explore the city with",
-    interests: ["Art", "Coffee", "Travel", "Photography", "Music"],
-    distance: "2 miles away",
-    verified: true,
-  },
-  {
-    id: "2",
-    name: "Emily",
-    age: 28,
-    photos: [
-      "https://images.unsplash.com/photo-1517841905240-472988babdf9?w=400&h=600&fit=crop",
-    ],
-    location: "Brooklyn, NY",
-    occupation: "Software Engineer",
-    bio: "Tech geek by day, yoga instructor by weekend. Let's grab tacos! 🌮",
-    interests: ["Yoga", "Tech", "Tacos", "Gaming", "Hiking"],
-    distance: "5 miles away",
-    verified: true,
-  },
-  {
-    id: "3",
-    name: "Jessica",
-    age: 24,
-    photos: [
-      "https://images.unsplash.com/photo-1524504388940-b1c1722653e1?w=400&h=600&fit=crop",
-    ],
-    location: "Manhattan, NY",
-    occupation: "Marketing Manager",
-    bio: "Wine enthusiast 🍷 | Book worm 📚 | Always up for an adventure",
-    interests: ["Wine", "Books", "Travel", "Fitness", "Cooking"],
-    distance: "3 miles away",
-  },
-];
 
 type SwipeMode = "swipe" | "serious" | "live";
 
 const Home: React.FC = () => {
   const navigate = useNavigate();
-  const [currentIndex, setCurrentIndex] = useState(0);
-  const [swipeDirection, setSwipeDirection] = useState<string | null>(null);
   const [activeMode, setActiveMode] = useState<SwipeMode>("swipe");
   const [user, setUser] = useState<any>(null);
+  const [exitDirection, setExitDirection] = useState<string | null>(null);
+
+  const { profiles, loading, newMatch, swipe, clearNewMatch, refetchProfiles } = useMatching();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -95,15 +53,22 @@ const Home: React.FC = () => {
     return () => subscription.unsubscribe();
   }, [navigate]);
 
-  const handleSwipe = (direction: "left" | "right" | "up") => {
-    setSwipeDirection(direction);
-    setTimeout(() => {
-      setSwipeDirection(null);
-      setCurrentIndex((prev) => (prev + 1) % demoProfiles.length);
-    }, 300);
+  const handleSwipe = async (profileId: string, direction: 'left' | 'right' | 'up') => {
+    const action = direction === 'left' ? 'dislike' 
+                 : direction === 'up' ? 'superlike' 
+                 : 'like';
+    
+    setExitDirection(direction);
+    await swipe(profileId, action);
+    setExitDirection(null);
   };
 
-  const currentProfile = demoProfiles[currentIndex];
+  const handleSendMessage = () => {
+    if (newMatch?.other_user) {
+      clearNewMatch();
+      navigate(`/chat`);
+    }
+  };
 
   return (
     <AppLayout>
@@ -153,73 +118,66 @@ const Home: React.FC = () => {
       <div className="px-4 py-6">
         {activeMode === "swipe" && (
           <div className="flex flex-col items-center">
-            {/* Card Stack */}
-            <div className="relative w-full max-w-sm h-[500px] mb-6">
-              {/* Background cards */}
-              {demoProfiles.slice(currentIndex + 1, currentIndex + 3).map((profile, idx) => (
-                <div
-                  key={profile.id}
-                  className="absolute inset-0"
-                  style={{
-                    transform: `scale(${1 - (idx + 1) * 0.05}) translateY(${(idx + 1) * 10}px)`,
-                    zIndex: -idx - 1,
-                    opacity: 1 - (idx + 1) * 0.2,
-                  }}
-                >
-                  <ProfileCard {...profile} />
-                </div>
-              ))}
-
-              {/* Current card */}
-              <div
-                className={cn(
-                  "absolute inset-0 transition-transform duration-300",
-                  swipeDirection === "left" && "swipe-left",
-                  swipeDirection === "right" && "swipe-right",
-                  swipeDirection === "up" && "swipe-up"
-                )}
-              >
-                <ProfileCard {...currentProfile} />
+            {/* Loading State */}
+            {loading && (
+              <div className="flex items-center justify-center h-[500px]">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
-            </div>
+            )}
 
-            {/* Action Buttons */}
-            <div className="flex items-center justify-center gap-4">
-              <Button
-                variant="outline"
-                size="icon-lg"
-                onClick={() => handleSwipe("left")}
-                className="rounded-full border-2 hover:border-destructive hover:text-destructive"
-              >
-                <X className="h-8 w-8" />
-              </Button>
+            {/* Empty State */}
+            {!loading && profiles.length === 0 && (
+              <div className="flex flex-col items-center justify-center h-[500px] text-center">
+                <Heart className="h-16 w-16 text-muted-foreground mb-4" />
+                <h2 className="text-xl font-semibold mb-2">No More Profiles</h2>
+                <p className="text-muted-foreground mb-6">
+                  Check back later for new matches!
+                </p>
+                <Button onClick={() => refetchProfiles()}>
+                  Refresh Profiles
+                </Button>
+              </div>
+            )}
 
-              <Button
-                variant="outline"
-                size="icon-xl"
-                onClick={() => handleSwipe("up")}
-                className="rounded-full border-2 border-warning text-warning hover:bg-warning hover:text-warning-foreground"
-              >
-                <Star className="h-10 w-10" />
-              </Button>
+            {/* Card Stack */}
+            {!loading && profiles.length > 0 && (
+              <>
+                <div className="relative w-full max-w-sm h-[500px] mb-6">
+                  <AnimatePresence mode="popLayout">
+                    {profiles.slice(0, 3).map((profile, index) => (
+                      <motion.div
+                        key={profile.id}
+                        className="absolute inset-0"
+                        initial={{ scale: 1 - index * 0.05, y: index * 10 }}
+                        animate={{ scale: 1 - index * 0.05, y: index * 10 }}
+                        exit={{
+                          x: exitDirection === 'right' ? 500 : exitDirection === 'left' ? -500 : 0,
+                          y: exitDirection === 'up' ? -500 : 0,
+                          opacity: 0,
+                          transition: { duration: 0.3 }
+                        }}
+                        style={{ zIndex: profiles.length - index }}
+                      >
+                        <SwipeCard
+                          profile={profile}
+                          isTop={index === 0}
+                          onSwipe={(direction) => handleSwipe(profile.id, direction)}
+                        />
+                      </motion.div>
+                    ))}
+                  </AnimatePresence>
+                </div>
 
-              <Button
-                variant="love"
-                size="icon-xl"
-                onClick={() => handleSwipe("right")}
-                className="rounded-full"
-              >
-                <Heart className="h-10 w-10" fill="currentColor" />
-              </Button>
-
-              <Button
-                variant="ghost"
-                size="icon"
-                className="text-muted-foreground"
-              >
-                <RotateCcw className="h-6 w-6" />
-              </Button>
-            </div>
+                {/* Action Buttons */}
+                <SwipeActions
+                  onSwipe={(direction) => {
+                    if (profiles.length > 0) {
+                      handleSwipe(profiles[0].id, direction);
+                    }
+                  }}
+                />
+              </>
+            )}
           </div>
         )}
 
@@ -254,6 +212,13 @@ const Home: React.FC = () => {
           </div>
         )}
       </div>
+
+      {/* Match Popup */}
+      <MatchPopup
+        match={newMatch}
+        onClose={clearNewMatch}
+        onSendMessage={handleSendMessage}
+      />
     </AppLayout>
   );
 };
