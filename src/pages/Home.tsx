@@ -8,7 +8,11 @@ import { SwipeActions } from "@/components/swipe/SwipeActions";
 import { MatchPopup } from "@/components/swipe/MatchPopup";
 import { ProfileDetailSheet } from "@/components/swipe/ProfileDetailSheet";
 import { DiscoveryFilters, Filters } from "@/components/swipe/DiscoveryFilters";
+import { SeriousProfileCard } from "@/components/serious/SeriousProfileCard";
+import { SeriousProfileEditor } from "@/components/serious/SeriousProfileEditor";
 import { useMatching, ProfileWithDetails } from "@/hooks/useMatching";
+import { useSeriousMode } from "@/hooks/useSeriousMode";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import {
   Heart,
   SlidersHorizontal,
@@ -16,6 +20,8 @@ import {
   Video,
   Users,
   Loader2,
+  Bell,
+  Edit,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
@@ -31,7 +37,9 @@ const Home: React.FC = () => {
   const [exitDirection, setExitDirection] = useState<string | null>(null);
   const [selectedProfile, setSelectedProfile] = useState<ProfileWithDetails | null>(null);
   const [showFilters, setShowFilters] = useState(false);
+  const [showSeriousEditor, setShowSeriousEditor] = useState(false);
 
+  // Swipe mode hook
   const { 
     profiles, 
     loading, 
@@ -44,6 +52,19 @@ const Home: React.FC = () => {
     filters,
     updateFilters
   } = useMatching();
+
+  // Serious mode hook
+  const {
+    seriousProfile,
+    profiles: seriousProfiles,
+    loading: seriousLoading,
+    updateSeriousProfile,
+    expressInterest,
+    refetchProfiles: refetchSeriousProfiles,
+  } = useSeriousMode();
+
+  // Push notifications
+  const { permission, requestPermission } = usePushNotifications();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -107,6 +128,22 @@ const Home: React.FC = () => {
     }
   };
 
+  const handleExpressInterest = async (receiverId: string, message?: string) => {
+    const { error } = await expressInterest(receiverId, message);
+    if (error) {
+      toast.error("Failed to send interest");
+    } else {
+      toast.success("Interest sent!");
+    }
+  };
+
+  const handleEnableNotifications = async () => {
+    const granted = await requestPermission();
+    if (granted) {
+      toast.success("You'll now receive notifications for matches and messages!");
+    }
+  };
+
   return (
     <AppLayout>
       {/* Header */}
@@ -117,6 +154,17 @@ const Home: React.FC = () => {
             <span className="font-bold text-xl">Lovora</span>
           </div>
           <div className="flex items-center gap-2">
+            {permission !== 'granted' && (
+              <Button 
+                variant="ghost" 
+                size="icon"
+                onClick={handleEnableNotifications}
+                className="relative"
+              >
+                <Bell className="h-5 w-5" />
+                <span className="absolute -top-1 -right-1 w-2 h-2 bg-primary rounded-full" />
+              </Button>
+            )}
             <ThemeToggle />
             <Button 
               variant="ghost" 
@@ -158,16 +206,15 @@ const Home: React.FC = () => {
 
       {/* Content */}
       <div className="px-4 py-6">
+        {/* Swipe Mode */}
         {activeMode === "swipe" && (
           <div className="flex flex-col items-center">
-            {/* Loading State */}
             {loading && (
               <div className="flex items-center justify-center h-[500px]">
                 <Loader2 className="h-8 w-8 animate-spin text-primary" />
               </div>
             )}
 
-            {/* Empty State */}
             {!loading && profiles.length === 0 && (
               <div className="flex flex-col items-center justify-center h-[500px] text-center">
                 <Heart className="h-16 w-16 text-muted-foreground mb-4" />
@@ -181,7 +228,6 @@ const Home: React.FC = () => {
               </div>
             )}
 
-            {/* Card Stack */}
             {!loading && profiles.length > 0 && (
               <>
                 <div className="relative w-full max-w-sm h-[500px] mb-6">
@@ -211,7 +257,6 @@ const Home: React.FC = () => {
                   </AnimatePresence>
                 </div>
 
-                {/* Action Buttons */}
                 <SwipeActions
                   onSwipe={(direction) => {
                     if (profiles.length > 0) {
@@ -226,16 +271,74 @@ const Home: React.FC = () => {
           </div>
         )}
 
+        {/* Serious Mode */}
         {activeMode === "serious" && (
-          <div className="text-center py-12">
-            <Users className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
-            <h2 className="text-xl font-semibold mb-2">Serious Mode</h2>
-            <p className="text-muted-foreground">
-              Detailed profiles for meaningful connections coming soon!
-            </p>
+          <div className="space-y-6">
+            {/* Edit Profile Button */}
+            <div className="flex justify-end">
+              <Button 
+                variant="outline" 
+                size="sm"
+                onClick={() => setShowSeriousEditor(true)}
+              >
+                <Edit className="h-4 w-4 mr-2" />
+                {seriousProfile ? 'Edit Profile' : 'Create Profile'}
+              </Button>
+            </div>
+
+            {/* Show setup prompt if no serious profile */}
+            {!seriousProfile && !seriousLoading && (
+              <div className="text-center py-12">
+                <Users className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                <h2 className="text-xl font-semibold mb-2">Set Up Your Serious Profile</h2>
+                <p className="text-muted-foreground mb-6">
+                  Add your family details and partner preferences to find meaningful connections
+                </p>
+                <Button onClick={() => setShowSeriousEditor(true)}>
+                  Create Serious Profile
+                </Button>
+              </div>
+            )}
+
+            {/* Loading */}
+            {seriousLoading && (
+              <div className="flex items-center justify-center h-[400px]">
+                <Loader2 className="h-8 w-8 animate-spin text-primary" />
+              </div>
+            )}
+
+            {/* Serious Profiles List */}
+            {seriousProfile && !seriousLoading && seriousProfiles.length === 0 && (
+              <div className="text-center py-12">
+                <Heart className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
+                <h2 className="text-xl font-semibold mb-2">No Profiles Yet</h2>
+                <p className="text-muted-foreground mb-6">
+                  Check back later for serious connection profiles
+                </p>
+                <Button onClick={() => refetchSeriousProfiles()}>
+                  Refresh
+                </Button>
+              </div>
+            )}
+
+            {seriousProfile && !seriousLoading && seriousProfiles.length > 0 && (
+              <div className="max-w-md mx-auto">
+                <AnimatePresence mode="wait">
+                  {seriousProfiles.slice(0, 1).map((profile) => (
+                    <SeriousProfileCard
+                      key={profile.user_id}
+                      profile={profile}
+                      onExpressInterest={(msg) => handleExpressInterest(profile.user_id, msg)}
+                      onSkip={() => refetchSeriousProfiles()}
+                    />
+                  ))}
+                </AnimatePresence>
+              </div>
+            )}
           </div>
         )}
 
+        {/* Live Mode */}
         {activeMode === "live" && (
           <div className="text-center py-12">
             <Video className="h-16 w-16 mx-auto text-muted-foreground mb-4" />
@@ -279,6 +382,14 @@ const Home: React.FC = () => {
         onOpenChange={setShowFilters}
         onApply={handleApplyFilters}
         currentFilters={filters}
+      />
+
+      {/* Serious Profile Editor */}
+      <SeriousProfileEditor
+        open={showSeriousEditor}
+        onOpenChange={setShowSeriousEditor}
+        profile={seriousProfile}
+        onSave={updateSeriousProfile}
       />
     </AppLayout>
   );
