@@ -8,9 +8,10 @@ interface Props {
   profile: ProfileWithDetails;
   onSwipe: (direction: 'left' | 'right' | 'up') => void;
   isTop: boolean;
+  onInfoClick?: () => void;
 }
 
-export function SwipeCard({ profile, onSwipe, isTop }: Props) {
+export function SwipeCard({ profile, onSwipe, isTop, onInfoClick }: Props) {
   const [currentPhotoIndex, setCurrentPhotoIndex] = useState(0);
   const [showInfo, setShowInfo] = useState(false);
   
@@ -145,7 +146,10 @@ export function SwipeCard({ profile, onSwipe, isTop }: Props) {
           </div>
 
           <button
-            onClick={() => setShowInfo(!showInfo)}
+            onClick={(e) => {
+              e.stopPropagation();
+              onInfoClick?.();
+            }}
             className="w-10 h-10 rounded-full bg-white/20 backdrop-blur-sm flex items-center justify-center"
           >
             <Info className="h-5 w-5" />
