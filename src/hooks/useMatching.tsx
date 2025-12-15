@@ -19,12 +19,58 @@ export interface Match {
   other_user?: ProfileWithDetails;
 }
 
+export interface SwipeHistoryItem {
+  id: string;
+  profile: ProfileWithDetails;
+  action: 'like' | 'dislike' | 'superlike';
+  timestamp: Date;
+}
+
+export interface Filters {
+  minAge: number;
+  maxAge: number;
+  maxDistance: number;
+  verifiedOnly: boolean;
+  preferredGender: string[];
+}
+
+const defaultFilters: Filters = {
+  minAge: 18,
+  maxAge: 50,
+  maxDistance: 50,
+  verifiedOnly: false,
+  preferredGender: ['male', 'female', 'other']
+};
+
 export function useMatching() {
   const { user } = useAuth();
   const [profiles, setProfiles] = useState<ProfileWithDetails[]>([]);
   const [matches, setMatches] = useState<Match[]>([]);
   const [loading, setLoading] = useState(true);
   const [newMatch, setNewMatch] = useState<Match | null>(null);
+  const [swipeHistory, setSwipeHistory] = useState<SwipeHistoryItem[]>([]);
+  const [filters, setFilters] = useState<Filters>(defaultFilters);
+
+  // Load user preferences/filters
+  const loadFilters = useCallback(async () => {
+    if (!user) return;
+
+    const { data } = await supabase
+      .from('user_preferences')
+      .select('*')
+      .eq('user_id', user.id)
+      .single();
+
+    if (data) {
+      setFilters({
+        minAge: data.min_age ?? 18,
+        maxAge: data.max_age ?? 50,
+        maxDistance: data.max_distance_km ?? 50,
+        verifiedOnly: data.show_verified_only ?? false,
+        preferredGender: (data.preferred_gender as string[]) ?? ['male', 'female', 'other']
+      });
+    }
+  }, [user]);
 
   const fetchProfilesToSwipe = useCallback(async () => {
     if (!user) return;
@@ -49,17 +95,36 @@ export function useMatching() {
     // Fetch profiles excluding swiped and blocked
     const excludeIds = [...swipedIds, ...blockedIds, user.id];
     
-    const { data: profilesData } = await supabase
+    let query = supabase
       .from('profiles')
       .select('*')
       .not('id', 'in', `(${excludeIds.join(',')})`)
-      .eq('onboarding_completed', true)
-      .limit(20);
+      .eq('onboarding_completed', true);
+
+    // Apply gender filter
+    if (filters.preferredGender.length > 0) {
+      query = query.in('gender', filters.preferredGender as ('male' | 'female' | 'other' | 'prefer_not_to_say')[]);
+    }
+
+    // Apply verified filter
+    if (filters.verifiedOnly) {
+      query = query.eq('verification_status', 'verified');
+    }
+
+    const { data: profilesData } = await query.limit(20);
 
     if (profilesData) {
       // Fetch photos and interests for each profile
       const profilesWithDetails = await Promise.all(
         profilesData.map(async (profile) => {
+          // Calculate age and filter
+          const birthDate = new Date(profile.date_of_birth);
+          const age = new Date().getFullYear() - birthDate.getFullYear();
+          
+          if (age < filters.minAge || age > filters.maxAge) {
+            return null;
+          }
+
           const { data: photos } = await supabase
             .from('user_photos')
             .select('*')
@@ -81,10 +146,10 @@ export function useMatching() {
         })
       );
 
-      setProfiles(profilesWithDetails);
+      setProfiles(profilesWithDetails.filter(Boolean) as ProfileWithDetails[]);
     }
     setLoading(false);
-  }, [user]);
+  }, [user, filters]);
 
   const fetchMatches = useCallback(async () => {
     if (!user) return;
@@ -124,6 +189,12 @@ export function useMatching() {
       setMatches(matchesWithUsers);
     }
   }, [user]);
+
+  useEffect(() => {
+    if (user) {
+      loadFilters();
+    }
+  }, [user, loadFilters]);
 
   useEffect(() => {
     if (user) {
@@ -208,6 +279,9 @@ export function useMatching() {
   const swipe = async (profileId: string, action: 'like' | 'dislike' | 'superlike') => {
     if (!user) return { error: new Error('Not authenticated') };
 
+    // Find the profile before removing it
+    const swipedProfile = profiles.find(p => p.id === profileId);
+
     const { error } = await supabase
       .from('swipes')
       .insert({
@@ -217,10 +291,48 @@ export function useMatching() {
       });
 
     if (!error) {
+      // Remove from profiles list
       setProfiles(prev => prev.filter(p => p.id !== profileId));
+      
+      // Add to swipe history for undo
+      if (swipedProfile) {
+        setSwipeHistory(prev => [{
+          id: profileId,
+          profile: swipedProfile,
+          action,
+          timestamp: new Date()
+        }, ...prev.slice(0, 9)]); // Keep last 10 swipes
+      }
     }
 
     return { error };
+  };
+
+  const undoLastSwipe = async () => {
+    if (!user || swipeHistory.length === 0) return { error: new Error('Nothing to undo') };
+
+    const lastSwipe = swipeHistory[0];
+
+    // Delete the swipe from database
+    const { error } = await supabase
+      .from('swipes')
+      .delete()
+      .eq('swiper_id', user.id)
+      .eq('swiped_id', lastSwipe.id);
+
+    if (!error) {
+      // Add profile back to the front
+      setProfiles(prev => [lastSwipe.profile, ...prev]);
+      
+      // Remove from history
+      setSwipeHistory(prev => prev.slice(1));
+    }
+
+    return { error };
+  };
+
+  const updateFilters = (newFilters: Filters) => {
+    setFilters(newFilters);
   };
 
   const clearNewMatch = () => setNewMatch(null);
@@ -233,6 +345,11 @@ export function useMatching() {
     swipe,
     clearNewMatch,
     refetchProfiles: fetchProfilesToSwipe,
-    refetchMatches: fetchMatches
+    refetchMatches: fetchMatches,
+    swipeHistory,
+    undoLastSwipe,
+    canUndo: swipeHistory.length > 0,
+    filters,
+    updateFilters
   };
 }

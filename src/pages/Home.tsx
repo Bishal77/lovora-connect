@@ -6,7 +6,9 @@ import { ThemeToggle } from "@/components/theme/ThemeToggle";
 import { SwipeCard } from "@/components/swipe/SwipeCard";
 import { SwipeActions } from "@/components/swipe/SwipeActions";
 import { MatchPopup } from "@/components/swipe/MatchPopup";
-import { useMatching } from "@/hooks/useMatching";
+import { ProfileDetailSheet } from "@/components/swipe/ProfileDetailSheet";
+import { DiscoveryFilters, Filters } from "@/components/swipe/DiscoveryFilters";
+import { useMatching, ProfileWithDetails } from "@/hooks/useMatching";
 import {
   Heart,
   SlidersHorizontal,
@@ -18,6 +20,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { supabase } from "@/integrations/supabase/client";
 import { cn } from "@/lib/utils";
+import { toast } from "sonner";
 
 type SwipeMode = "swipe" | "serious" | "live";
 
@@ -26,8 +29,21 @@ const Home: React.FC = () => {
   const [activeMode, setActiveMode] = useState<SwipeMode>("swipe");
   const [user, setUser] = useState<any>(null);
   const [exitDirection, setExitDirection] = useState<string | null>(null);
+  const [selectedProfile, setSelectedProfile] = useState<ProfileWithDetails | null>(null);
+  const [showFilters, setShowFilters] = useState(false);
 
-  const { profiles, loading, newMatch, swipe, clearNewMatch, refetchProfiles } = useMatching();
+  const { 
+    profiles, 
+    loading, 
+    newMatch, 
+    swipe, 
+    clearNewMatch, 
+    refetchProfiles,
+    undoLastSwipe,
+    canUndo,
+    filters,
+    updateFilters
+  } = useMatching();
 
   useEffect(() => {
     const checkAuth = async () => {
@@ -63,10 +79,31 @@ const Home: React.FC = () => {
     setExitDirection(null);
   };
 
+  const handleUndo = async () => {
+    const { error } = await undoLastSwipe();
+    if (error) {
+      toast.error("Can't undo right now");
+    } else {
+      toast.success("Swipe undone!");
+    }
+  };
+
   const handleSendMessage = () => {
     if (newMatch?.other_user) {
       clearNewMatch();
       navigate(`/chat`);
+    }
+  };
+
+  const handleApplyFilters = (newFilters: Filters) => {
+    updateFilters(newFilters);
+    refetchProfiles();
+  };
+
+  const handleProfileSwipe = (direction: 'left' | 'right' | 'up') => {
+    if (selectedProfile) {
+      handleSwipe(selectedProfile.id, direction);
+      setSelectedProfile(null);
     }
   };
 
@@ -81,7 +118,12 @@ const Home: React.FC = () => {
           </div>
           <div className="flex items-center gap-2">
             <ThemeToggle />
-            <Button variant="ghost" size="icon">
+            <Button 
+              variant="ghost" 
+              size="icon"
+              onClick={() => setShowFilters(true)}
+              className="relative"
+            >
               <SlidersHorizontal className="h-5 w-5" />
             </Button>
           </div>
@@ -162,6 +204,7 @@ const Home: React.FC = () => {
                           profile={profile}
                           isTop={index === 0}
                           onSwipe={(direction) => handleSwipe(profile.id, direction)}
+                          onInfoClick={() => setSelectedProfile(profile)}
                         />
                       </motion.div>
                     ))}
@@ -175,6 +218,8 @@ const Home: React.FC = () => {
                       handleSwipe(profiles[0].id, direction);
                     }
                   }}
+                  onUndo={handleUndo}
+                  canUndo={canUndo}
                 />
               </>
             )}
@@ -218,6 +263,22 @@ const Home: React.FC = () => {
         match={newMatch}
         onClose={clearNewMatch}
         onSendMessage={handleSendMessage}
+      />
+
+      {/* Profile Detail Sheet */}
+      <ProfileDetailSheet
+        profile={selectedProfile}
+        open={!!selectedProfile}
+        onOpenChange={(open) => !open && setSelectedProfile(null)}
+        onSwipe={handleProfileSwipe}
+      />
+
+      {/* Discovery Filters */}
+      <DiscoveryFilters
+        open={showFilters}
+        onOpenChange={setShowFilters}
+        onApply={handleApplyFilters}
+        currentFilters={filters}
       />
     </AppLayout>
   );
