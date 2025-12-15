@@ -1,11 +1,13 @@
-import React from "react";
+import React, { useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { AppLayout } from "@/components/layout/AppLayout";
 import { AvatarProfile } from "@/components/ui/avatar-profile";
 import { Button } from "@/components/ui/button";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { PhotoVerification } from "@/components/verification/PhotoVerification";
 import { useAuth } from "@/hooks/useAuth";
 import { useProfile } from "@/hooks/useProfile";
+import { usePushNotifications } from "@/hooks/usePushNotifications";
 import {
   Settings,
   Edit,
@@ -16,18 +18,33 @@ import {
   LogOut,
   ChevronRight,
   Crown,
+  CheckCircle,
+  Clock,
 } from "lucide-react";
 import { toast } from "sonner";
 
 const Profile: React.FC = () => {
   const navigate = useNavigate();
   const { user, signOut } = useAuth();
-  const { profile, photos } = useProfile();
+  const { profile, photos, refetch } = useProfile();
+  const { permission, requestPermission } = usePushNotifications();
+  const [showVerification, setShowVerification] = useState(false);
 
   const handleLogout = async () => {
     await signOut();
     navigate("/");
     toast.success("Signed out successfully");
+  };
+
+  const handleNotificationClick = async () => {
+    if (permission === 'granted') {
+      toast.info("Notifications are already enabled");
+    } else {
+      const granted = await requestPermission();
+      if (granted) {
+        toast.success("Notifications enabled!");
+      }
+    }
   };
 
   const completionPercentage = () => {
@@ -41,12 +58,41 @@ const Profile: React.FC = () => {
     return Math.round((completed / (fields.length + 1)) * 100);
   };
 
+  const getVerificationStatus = () => {
+    switch (profile?.verification_status) {
+      case 'verified':
+        return { label: 'Verified', icon: CheckCircle, color: 'text-success' };
+      case 'pending':
+        return { label: 'Pending Review', icon: Clock, color: 'text-warning' };
+      default:
+        return { label: 'Get Verified', icon: Shield, color: 'text-muted-foreground' };
+    }
+  };
+
+  const verificationStatus = getVerificationStatus();
+
   const menuItems = [
     {
       icon: Edit,
       label: "Edit Profile",
       description: "Update your photos and bio",
       onClick: () => navigate("/onboarding"),
+    },
+    {
+      icon: verificationStatus.icon,
+      label: verificationStatus.label,
+      description: profile?.verification_status === 'verified' 
+        ? "Your profile is verified" 
+        : profile?.verification_status === 'pending'
+        ? "We're reviewing your photo"
+        : "Verify your profile with a selfie",
+      onClick: () => {
+        if (profile?.verification_status !== 'verified' && profile?.verification_status !== 'pending') {
+          setShowVerification(true);
+        }
+      },
+      highlight: profile?.verification_status === 'none' || !profile?.verification_status,
+      color: verificationStatus.color,
     },
     {
       icon: Crown,
@@ -56,15 +102,16 @@ const Profile: React.FC = () => {
       highlight: true,
     },
     {
+      icon: Bell,
+      label: "Notifications",
+      description: permission === 'granted' ? "Notifications enabled" : "Enable push notifications",
+      onClick: handleNotificationClick,
+      badge: permission !== 'granted',
+    },
+    {
       icon: Shield,
       label: "Privacy & Safety",
       description: "Manage your privacy settings",
-      onClick: () => toast.info("Coming soon!"),
-    },
-    {
-      icon: Bell,
-      label: "Notifications",
-      description: "Configure push notifications",
       onClick: () => toast.info("Coming soon!"),
     },
     {
@@ -143,14 +190,19 @@ const Profile: React.FC = () => {
                     item.highlight
                       ? "bg-primary text-primary-foreground"
                       : "bg-muted"
-                  }`}
+                  } ${item.color || ''}`}
                 >
                   <Icon className="h-5 w-5" />
                 </div>
                 <div className="flex-1 text-left">
-                  <p className={`font-medium ${item.highlight ? "text-primary" : ""}`}>
-                    {item.label}
-                  </p>
+                  <div className="flex items-center gap-2">
+                    <p className={`font-medium ${item.highlight ? "text-primary" : ""}`}>
+                      {item.label}
+                    </p>
+                    {item.badge && (
+                      <span className="w-2 h-2 bg-primary rounded-full" />
+                    )}
+                  </div>
                   <p className="text-sm text-muted-foreground">
                     {item.description}
                   </p>
@@ -170,6 +222,13 @@ const Profile: React.FC = () => {
           Sign Out
         </Button>
       </div>
+
+      {/* Photo Verification Dialog */}
+      <PhotoVerification
+        open={showVerification}
+        onOpenChange={setShowVerification}
+        onComplete={refetch}
+      />
     </AppLayout>
   );
 };
